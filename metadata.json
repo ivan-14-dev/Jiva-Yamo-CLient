@@ -1,0 +1,8 @@
+{
+  "name": "KamerDeliver",
+  "description": "Multi-role food, grocery, and seller delivery marketplace platform for Cameroon (Douala, Yaoundé, Bafoussam, etc.) supporting clients, sellers, restaurants, and drivers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
