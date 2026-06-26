@@ -26,12 +26,16 @@ import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.AccountCircle
+import com.example.ui.theme.*
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -51,9 +55,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -61,9 +63,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.KamerRepository
 import com.example.data.UserRole
-import com.example.ui.theme.SecondaryGreen
-import com.example.ui.theme.PrimaryOrange
-import com.example.ui.theme.AccentYellow
 
 @Composable
 fun AuthScreen(
@@ -94,36 +93,19 @@ fun AuthScreen(
                 .verticalScroll(scrollState),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Sleek Minimalist Uber Eats Styled Header
+            // Minimalist Header
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(180.dp)
-                    .background(PrimaryOrange), // Black background
+                    .padding(top = 48.dp, bottom = 24.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(
-                        modifier = Modifier
-                            .size(50.dp)
-                            .background(SecondaryGreen, CircleShape), // Classic Uber Green
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("🟢", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "KamerDeliver",
-                        style = MaterialTheme.typography.headlineLarge,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Votre marché local en un clic • Uber style",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.9f)
-                    )
-                }
+                Text(
+                    text = "KamerDeliver",
+                    style = MaterialTheme.typography.displaySmall,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontWeight = FontWeight.Black
+                )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -156,24 +138,13 @@ fun AuthScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            Card(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(24.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                border = BorderStroke(1.dp, Color(0xFFE8E8E8))
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    if (isOtpScreen) {
+                if (isOtpScreen) {
                         Text(
                             text = if (currentLang == "Français") "Vérification de sécurité" else "Security Verification",
                             style = MaterialTheme.typography.titleLarge,
@@ -329,12 +300,17 @@ fun AuthScreen(
                         OutlinedTextField(
                             value = phone,
                             onValueChange = { phone = it },
-                            label = { Text(if (currentLang == "Français") "Téléphone (MTN / Orange)" else "Phone (MTN / Orange)") },
-                            leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = SecondaryGreen, focusedLabelColor = SecondaryGreen),
+                            label = { Text(if (currentLang == "Français") "E-mail ou numéro de téléphone" else "Email or phone number") },
+                            leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color.Transparent,
+                                unfocusedBorderColor = Color.Transparent,
+                                focusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            ),
                             modifier = Modifier.fillMaxWidth().testTag("phone_input")
                         )
+                        Divider(color = Color.LightGray, thickness = 1.dp)
 
                         Spacer(modifier = Modifier.height(12.dp))
 
@@ -345,9 +321,14 @@ fun AuthScreen(
                             leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                             visualTransformation = PasswordVisualTransformation(),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = SecondaryGreen, focusedLabelColor = SecondaryGreen),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color.Transparent,
+                                unfocusedBorderColor = Color.Transparent,
+                                focusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            ),
                             modifier = Modifier.fillMaxWidth().testTag("password_input")
                         )
+                        Divider(color = Color.LightGray, thickness = 1.dp)
 
                         if (isLoginMode) {
                             Row(
@@ -382,7 +363,7 @@ fun AuthScreen(
                                     }
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = SecondaryGreen),
+                            colors = ButtonDefaults.buttonColors(containerColor = UberBlack),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -399,9 +380,53 @@ fun AuthScreen(
                                 fontSize = 16.sp
                             )
                         }
+
+                        // Social Login
+                        Spacer(modifier = Modifier.height(24.dp))
+                        
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Divider(modifier = Modifier.weight(1f), color = Color.LightGray)
+                            Text(
+                                text = if (currentLang == "Français") " ou " else " or ",
+                                modifier = Modifier.padding(horizontal = 8.dp),
+                                color = UberGrayDark,
+                                fontSize = 12.sp
+                            )
+                            Divider(modifier = Modifier.weight(1f), color = Color.LightGray)
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        OutlinedButton(
+                            onClick = { /* Google Login */ },
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Color.LightGray),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = UberBlack)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("G ", fontWeight = FontWeight.Bold, color = UberRed, fontSize = 20.sp)
+                                Text(if (currentLang == "Français") "Continuer avec Google" else "Continue with Google")
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        OutlinedButton(
+                            onClick = { /* Apple Login */ },
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Color.LightGray),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = UberBlack)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.AccountCircle, contentDescription = null, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(if (currentLang == "Français") "Continuer avec Apple" else "Continue with Apple")
+                            }
+                        }
                     }
                 }
-            }
 
             Spacer(modifier = Modifier.height(8.dp))
 

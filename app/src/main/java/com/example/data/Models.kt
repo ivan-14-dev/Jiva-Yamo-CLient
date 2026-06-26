@@ -15,6 +15,16 @@ enum class SellerType {
     LOCAL_PRODUCER
 }
 
+data class Supplement(
+    val name: String,
+    val price: Double
+)
+
+data class ProductVariant(
+    val name: String,
+    val priceAdjustment: Double = 0.0
+)
+
 data class MenuItem(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
@@ -24,7 +34,8 @@ data class MenuItem(
     val imageUrl: String = "",
     val category: String,
     val stock: Int = 10,
-    val variants: List<String> = emptyList() // e.g. ["Petite", "Moyenne", "Grande"]
+    val variants: List<ProductVariant> = emptyList(),
+    val supplements: List<Supplement> = emptyList()
 )
 
 data class Product(
@@ -162,12 +173,28 @@ data class AddressBook(
     val details: String = ""
 )
 
+data class Reservation(
+    val id: String = UUID.randomUUID().toString().take(6).uppercase(),
+    val restaurantId: String,
+    val restaurantName: String,
+    val date: String,
+    val time: String,
+    val partySize: Int,
+    val note: String = ""
+)
+
+enum class LoyaltyLevel {
+    BRONZE, SILVER, GOLD, PLATINUM
+}
+
 data class UserProfile(
     val name: String = "Ivan Bayiga",
     val email: String = "ivan.bayiga@gmail.com",
     val phone: String = "690123456",
     val points: Int = 120, // Fidelity points
     val cashback: Double = 1500.0, // in XAF
+    val loyaltyLevel: LoyaltyLevel = LoyaltyLevel.BRONZE,
+    val parrainageCode: String = "IVAN2026",
     val language: String = "Français",
     val addresses: List<AddressBook> = listOf(
         AddressBook("Maison", "Nlongkak, Yaoundé", "Près de la boulangerie du peuple"),

@@ -49,10 +49,13 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import com.example.data.KamerRepository
 import com.example.data.UserRole
 import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.ClientScreen
+import com.example.ui.screens.OnboardingScreen
 import com.example.ui.screens.VisitorScreen
 import com.example.ui.theme.AccentYellow
 import com.example.ui.theme.MyApplicationTheme
@@ -60,26 +63,32 @@ import com.example.ui.theme.PrimaryOrange
 import com.example.ui.theme.SecondaryGreen
 
 class MainActivity : ComponentActivity() {
+    @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
+            val windowSizeClass = calculateWindowSizeClass(this)
             val isDarkMode by KamerRepository.isDarkMode.collectAsState()
             MyApplicationTheme(darkTheme = isDarkMode) {
-                MainContent()
+                MainContent(windowSizeClass)
             }
         }
     }
 }
 
 @Composable
-fun MainContent() {
+fun MainContent(windowSizeClass: androidx.compose.material3.windowsizeclass.WindowSizeClass) {
     val currentRole by KamerRepository.currentUserRole.collectAsState()
     val currentLang by KamerRepository.currentLanguage.collectAsState()
+    val isFirstLaunch by KamerRepository.isFirstLaunch.collectAsState()
 
     var showAuthFlow by remember { mutableStateOf(true) }
 
-    Scaffold(
+    if (isFirstLaunch) {
+        OnboardingScreen(onFinished = { KamerRepository.setFirstLaunchFinished() })
+    } else {
+        Scaffold(
         topBar = {
             Column {
                 // High-fidelity edge-to-edge friendly custom top bar
@@ -169,7 +178,8 @@ fun MainContent() {
                         onNavigateToAuth = { showAuthFlow = true }
                     )
                     UserRole.CLIENT -> ClientScreen(
-                        onNavigateBackToAuth = { showAuthFlow = true }
+                        onNavigateBackToAuth = { showAuthFlow = true },
+                        windowSizeClass = windowSizeClass
                     )
                     else -> VisitorScreen(
                         onNavigateToAuth = { showAuthFlow = true }
@@ -178,4 +188,5 @@ fun MainContent() {
             }
         }
     }
+}
 }

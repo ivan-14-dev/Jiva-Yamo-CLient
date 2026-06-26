@@ -22,6 +22,14 @@ object KamerRepository {
         _currentLanguage.value = lang
     }
 
+    // First launch state
+    private val _isFirstLaunch = MutableStateFlow(true)
+    val isFirstLaunch: StateFlow<Boolean> = _isFirstLaunch.asStateFlow()
+
+    fun setFirstLaunchFinished() {
+        _isFirstLaunch.value = false
+    }
+
     // Dark mode state
     private val _isDarkMode = MutableStateFlow(false) // default light mode
     val isDarkMode: StateFlow<Boolean> = _isDarkMode.asStateFlow()
@@ -84,6 +92,27 @@ object KamerRepository {
     private val _userProfile = MutableStateFlow(UserProfile())
     val userProfile: StateFlow<UserProfile> = _userProfile.asStateFlow()
 
+    // Notifications
+    private val _notifications = MutableStateFlow<List<String>>(emptyList())
+    val notifications: StateFlow<List<String>> = _notifications.asStateFlow()
+
+    fun sendNotification(message: String) {
+        _notifications.value = _notifications.value + message
+    }
+
+    // Search History
+    private val _searchHistory = MutableStateFlow<List<String>>(emptyList())
+    val searchHistory: StateFlow<List<String>> = _searchHistory.asStateFlow()
+
+    fun addSearchQuery(query: String) {
+        if (query.isNotBlank() && !_searchHistory.value.contains(query)) {
+            _searchHistory.value = (_searchHistory.value + query).takeLast(10)
+        }
+    }
+
+    fun addToSearchHistory(query: String) = addSearchQuery(query)
+    fun clearSearchHistory() { _searchHistory.value = emptyList() }
+
     init {
         // Populate static mock data
         initializeMockData()
@@ -104,7 +133,7 @@ object KamerRepository {
                 isSponsored = true,
                 categories = listOf("Cuisine Camerounaise", "Grillades"),
                 menu = listOf(
-                    MenuItem("tm_ndole", "Ndolé Royal aux Crevettes", "Plat traditionnel composé de feuilles de ndolé, d'arachides fraîches cuites, de crevettes sautées et de plantains mûrs frits.", 3500.0, true, "", "Cuisine Camerounaise", 15, listOf("Moyenne Portion", "Grande Portion")),
+                    MenuItem("tm_ndole", "Ndolé Royal aux Crevettes", "Plat traditionnel composé de feuilles de ndolé, d'arachides fraîches cuites, de crevettes sautées et de plantains mûrs frits.", 3500.0, true, "", "Cuisine Camerounaise", 15, listOf(ProductVariant("Moyenne Portion"), ProductVariant("Grande Portion"))),
                     MenuItem("tm_pouletdg", "Poulet DG Classique", "Mijoté de poulet fermier aux plantains frits, carottes, haricots verts et poivrons colorés dans une sauce onctueuse.", 4500.0, true, "", "Cuisine Camerounaise", 12),
                     MenuItem("tm_achu", "Achu complet du Nord-Ouest", "Taro pilé servi avec sa sauce jaune onctueuse, de la peau de bœuf croustillante (kanda) et de la viande de bœuf.", 4000.0, true, "", "Cuisine Camerounaise", 8),
                     MenuItem("tm_poisson", "Bar de Kribi braisé au piment", "Poisson bar frais braisé avec des épices locales africaines, servi avec des frites de plantain mûr (miondo) et piment.", 5000.0, true, "", "Grillades", 10),
@@ -123,9 +152,9 @@ object KamerRepository {
                 rating = 4.5f,
                 categories = listOf("Fast Food"),
                 menu = listOf(
-                    MenuItem("bs_chiz", "Star Cheeseburger", "Pain brioché, bœuf 150g, double cheddar fondu, oignons caramélisés, sauce maison et frites.", 3000.0, true, "", "Fast Food", 20, listOf("Standard", "Double Steak (+1500 XAF)")),
+                    MenuItem("bs_chiz", "Star Cheeseburger", "Pain brioché, bœuf 150g, double cheddar fondu, oignons caramélisés, sauce maison et frites.", 3000.0, true, "", "Fast Food", 20, listOf(ProductVariant("Standard"), ProductVariant("Double Steak", 1500.0))),
                     MenuItem("bs_chicken", "Crispy Mboa Chicken", "Filet de poulet pané croustillant au piment doux du Cameroun, salade fraîche, mayonnaise épicée.", 3500.0, true, "", "Fast Food", 14),
-                    MenuItem("bs_pizza", "Pizza Mboa Reggae", "Pizza croustillante garnie de morceaux de bœuf épicé (suya), piment doux, oignons frais et mozzarella filante.", 5000.0, true, "", "Pizza", 18, listOf("Moyenne", "Géante (+2500 XAF)"))
+                    MenuItem("bs_pizza", "Pizza Mboa Reggae", "Pizza croustillante garnie de morceaux de bœuf épicé (suya), piment doux, oignons frais et mozzarella filante.", 5000.0, true, "", "Pizza", 18, listOf(ProductVariant("Moyenne"), ProductVariant("Géante", 2500.0)))
                 ),
                 reviews = listOf(
                     Review(author = "Arthur F.", rating = 4f, comment = "Le meilleur burger de Yaoundé ! Les frites sont croustillantes.", date = "2026-06-22")
@@ -296,6 +325,12 @@ object KamerRepository {
         }
     }
 
+    // Reorder
+    fun reorder(orderId: String) {
+        val order = _orders.value.find { it.id == orderId } ?: return
+        order.items.forEach { addToCart(it) }
+    }
+
     // Cart operations
     fun addToCart(item: CartItem) {
         val current = _cart.value.toMutableList()
@@ -452,6 +487,7 @@ object KamerRepository {
             var order = _orders.value.find { it.id == orderId } ?: return@launch
             if (order.status == OrderStatus.PENDING) {
                 updateOrderStatus(orderId, OrderStatus.PREPARING)
+                sendNotification("Votre commande #${orderId.takeLast(4)} est maintenant en préparation ! 🍳")
                 addChatMessage(orderId, "Bonjour, nous avons bien reçu votre commande ! Préparation en cours en cuisine. 🍳", "Restaurant")
             }
 
@@ -459,6 +495,7 @@ object KamerRepository {
             order = _orders.value.find { it.id == orderId } ?: return@launch
             if (order.status == OrderStatus.PREPARING) {
                 updateOrderStatus(orderId, OrderStatus.OUT_FOR_DELIVERY)
+                sendNotification("Votre commande #${orderId.takeLast(4)} est en route ! 🛵")
                 addChatMessage(orderId, "Commande prête ! Je la récupère à l'instant et je démarre ma moto. À tout de suite !", "Moussa Sali (Livreur)")
             }
 
@@ -488,6 +525,7 @@ object KamerRepository {
             order = _orders.value.find { it.id == orderId } ?: return@launch
             if (order.status == OrderStatus.OUT_FOR_DELIVERY) {
                 updateOrderStatus(orderId, OrderStatus.DELIVERED)
+                sendNotification("Votre commande #${orderId.takeLast(4)} a été livrée ! Bon appétit ! 😋")
                 addChatMessage(orderId, "Je suis devant votre porte ! Bon appétit ! N'hésitez pas à me laisser une note sur KamerDeliver.", "Moussa Sali (Livreur)")
             }
         }

@@ -87,6 +87,8 @@ import com.example.ui.theme.AccentYellow
 import com.example.ui.theme.CameroonRed
 import com.example.ui.theme.PrimaryOrange
 import com.example.ui.theme.SecondaryGreen
+import com.example.ui.components.FoodItemCard
+import com.example.ui.components.RestaurantCard
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -366,83 +368,10 @@ fun VisitorHome(
         } else {
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                 filteredRest.forEach { rest ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp)
-                            .clickable { onRestClick(rest.id) }
-                            .testTag("rest_card_${rest.id}"),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                    ) {
-                        Column {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(130.dp)
-                            ) {
-                                AsyncImage(
-                                    model = rest.banner,
-                                    contentDescription = rest.name,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                                if (rest.isSponsored) {
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.TopEnd)
-                                            .padding(10.dp)
-                                            .background(SecondaryGreen, RoundedCornerShape(6.dp))
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                    ) {
-                                        Text(
-                                            text = "Sponsorisé",
-                                            color = Color.White,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .padding(8.dp)
-                                        .background(AccentYellow, RoundedCornerShape(6.dp))
-                                        .padding(horizontal = 6.dp, vertical = 3.dp)
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.Star, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
-                                        Spacer(modifier = Modifier.width(3.dp))
-                                        Text(rest.rating.toString(), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .background(PrimaryOrange.copy(alpha = 0.1f), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(rest.logo, fontSize = 22.sp)
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(rest.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                    Text(rest.description, fontSize = 12.sp, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text("📍 ${rest.address}", fontSize = 11.sp, color = SecondaryGreen)
-                                }
-                                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
-                            }
-                        }
-                    }
+                    RestaurantCard(
+                        restaurant = rest,
+                        onClick = { onRestClick(rest.id) }
+                    )
                 }
             }
         }
@@ -479,65 +408,22 @@ fun VisitorHome(
         } else {
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                 filteredSellers.forEach { seller ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp)
-                            .clickable { onSellerClick(seller.id) }
-                            .testTag("seller_card_${seller.id}"),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                    ) {
-                        Column {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(120.dp)
-                            ) {
-                                AsyncImage(
-                                    model = seller.banner,
-                                    contentDescription = seller.name,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.TopStart)
-                                        .padding(10.dp)
-                                        .background(PrimaryOrange, RoundedCornerShape(6.dp))
-                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Text(
-                                        text = when (seller.type) {
-                                            SellerType.GROCERY -> "Épicerie"
-                                            SellerType.BAKERY -> "Boulangerie"
-                                            SellerType.BUTCHERY -> "Boucherie"
-                                            SellerType.MARKET -> "Grand Marché"
-                                            SellerType.LOCAL_PRODUCER -> "Producteur Local"
-                                        },
-                                        color = Color.White,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(seller.logo, fontSize = 24.sp)
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(seller.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                    Text(seller.description, fontSize = 12.sp, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                }
-                                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
-                            }
-                        }
-                    }
+                    RestaurantCard(
+                        restaurant = Restaurant(
+                            id = seller.id,
+                            name = seller.name,
+                            description = seller.description,
+                            logo = seller.logo,
+                            banner = seller.banner,
+                            address = seller.address,
+                            city = seller.city,
+                            rating = seller.rating,
+                            isSponsored = false, // Seller doesn't have isSponsored in model
+                            categories = listOf(seller.type.name)
+                        ),
+                        onClick = { onSellerClick(seller.id) },
+                        currentLang = currentLang
+                    )
                 }
             }
         }
@@ -659,37 +545,17 @@ fun RestaurantDetail(
             Spacer(modifier = Modifier.height(10.dp))
 
             rest.menu.forEach { item ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .padding(12.dp)
-                            .fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(item.name, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                            Text(item.description, fontSize = 12.sp, color = Color.Gray, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text("${item.price.toInt()} XAF", fontWeight = FontWeight.ExtraBold, color = SecondaryGreen, fontSize = 14.sp)
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        // Visual non-functional add button since they are not connected
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .background(Color.Gray.copy(alpha = 0.2f), CircleShape)
-                                .clickable { onAuthRedirect() },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = "Add to cart", tint = Color.Gray)
-                        }
-                    }
-                }
+                FoodItemCard(
+                    name = item.name,
+                    description = item.description,
+                    price = item.price,
+                    imageUrl = item.imageUrl,
+                    subTitle = null,
+                    onAddToCart = { onAuthRedirect() },
+                    onClick = { onAuthRedirect() },
+                    currentLang = currentLang
+                )
+                Spacer(modifier = Modifier.height(12.dp))
             }
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -847,32 +713,17 @@ fun SellerDetail(
             Spacer(modifier = Modifier.height(10.dp))
 
             seller.products.forEach { prod ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp)
-                        .clickable { onProductClick(prod.id) },
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .padding(12.dp)
-                            .fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(prod.name, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                            Text(prod.description, fontSize = 12.sp, color = Color.Gray)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("${prod.price.toInt()} XAF", fontWeight = FontWeight.ExtraBold, color = SecondaryGreen)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("•  ${prod.weight}", fontSize = 11.sp, color = Color.Gray)
-                            }
-                        }
-                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
-                    }
-                }
+                FoodItemCard(
+                    name = prod.name,
+                    description = prod.description,
+                    price = prod.price,
+                    imageUrl = prod.imageUrl,
+                    subTitle = null,
+                    onAddToCart = { onAuthRedirect() },
+                    onClick = { onProductClick(prod.id) },
+                    currentLang = currentLang
+                )
+                Spacer(modifier = Modifier.height(12.dp))
             }
         }
     }

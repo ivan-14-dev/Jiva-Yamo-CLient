@@ -46,33 +46,49 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.R
 import com.example.data.*
+import com.example.ui.components.AlertModal
+import com.example.ui.components.EmptyState
+import com.example.ui.components.LoadingState
+import com.example.ui.components.FoodItemCard
+import com.example.ui.components.RestaurantCard
+import com.example.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-// Uber Eats style palette
-val UberBlack = Color(0xFF000000)
-val UberWhite = Color(0xFFFFFFFF)
-val UberGreen = Color(0xFF06C167) // Classic Uber Eats Green
-val UberGrayLight = Color(0xFFF6F6F6) // Sleek light gray background/surface
-val UberGrayMedium = Color(0xFFE8E8E8) // Visual border lines
-val UberGrayDark = Color(0xFF545454) // Subdued body text
-val UberRed = Color(0xFFE01919)
-val UberYellow = Color(0xFFFFC000)
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 
 @Composable
 fun ClientScreen(
-    onNavigateBackToAuth: () -> Unit
+    onNavigateBackToAuth: () -> Unit,
+    windowSizeClass: androidx.compose.material3.windowsizeclass.WindowSizeClass
 ) {
+    val haptic = LocalHapticFeedback.current
+    val isExpanded = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded
+
     var selectedClientTab by remember { mutableStateOf("dashboard") } // dashboard, search, favorites, orders, profile, cart
+    var selectedRestaurant by remember { mutableStateOf<Restaurant?>(null) }
 
     val currentLang by KamerRepository.currentLanguage.collectAsState()
     val cart by KamerRepository.cart.collectAsState()
     val orders by KamerRepository.orders.collectAsState()
+    val profile by KamerRepository.userProfile.collectAsState()
+    val notifications by KamerRepository.notifications.collectAsState()
+
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(notifications) {
+        if (notifications.isNotEmpty()) {
+            snackbarHostState.showSnackbar(notifications.last())
+        }
+    }
 
     val activeOrdersCount = orders.count { it.status != OrderStatus.DELIVERED && it.status != OrderStatus.CANCELLED }
 
     Scaffold(
         containerColor = UberWhite,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             if (cart.isNotEmpty() && selectedClientTab != "cart") {
                 ExtendedFloatingActionButton(
@@ -236,11 +252,20 @@ fun ClientScreen(
             when (selectedClientTab) {
                 "dashboard" -> ClientDashboardScreen(
                     currentLang = currentLang,
-                    onNavigateToTab = { selectedClientTab = it }
+                    onNavigateToTab = { selectedClientTab = it },
+                    onNavigateToRestaurant = {
+                        selectedRestaurant = it
+                        selectedClientTab = "restaurant_details"
+                    },
+                    isExpanded = isExpanded
                 )
                 "search" -> ClientSearchScreen(
                     currentLang = currentLang,
-                    onNavigateToTab = { selectedClientTab = it }
+                    onNavigateToTab = { selectedClientTab = it },
+                    onNavigateToRestaurant = {
+                        selectedRestaurant = it
+                        selectedClientTab = "restaurant_details"
+                    }
                 )
                 "favorites" -> ClientFavoritesScreen(
                     currentLang = currentLang,
@@ -248,11 +273,36 @@ fun ClientScreen(
                 )
                 "cart" -> ClientCartScreen(
                     currentLang = currentLang,
-                    onOrderPlaced = { selectedClientTab = "orders" }
+                    onOrderPlaced = { selectedClientTab = "checkout" }
                 )
-                "orders" -> ClientOrdersScreen(currentLang = currentLang)
+                "checkout" -> CheckoutScreen(
+                    onNavigateBack = { selectedClientTab = "cart" },
+                    onOrderPlaced = { 
+                        // Show some success message or navigate to orders
+                        selectedClientTab = "orders" 
+                    }
+                )
+                "orders" -> ClientOrdersScreen(
+                    currentLang = currentLang,
+                    onNavigate = { selectedClientTab = it }
+                )
+                "rewards" -> RewardsScreen(userProfile = profile)
+                "reservation" -> ReservationScreen(onReserve = { _, _, _ -> /* TODO */ })
+                "faq" -> FaqScreen(onNavigateBack = { selectedClientTab = "profile" })
+                "restaurant_details" -> if (selectedRestaurant != null) {
+                    RestaurantDetailsScreen(
+                        restaurant = selectedRestaurant!!,
+                        currentLang = currentLang,
+                        onNavigateBack = { selectedClientTab = "dashboard" },
+                        onAddToCart = { cartItem ->
+                            KamerRepository.addToCart(cartItem)
+                            selectedClientTab = "cart"
+                        }
+                    )
+                }
                 "profile" -> ClientProfileScreen(
                     currentLang = currentLang,
+                    onNavigateToTab = { selectedClientTab = it },
                     onLogout = {
                         KamerRepository.switchRole(UserRole.VISITOR)
                         onNavigateBackToAuth()
@@ -267,7 +317,9 @@ fun ClientScreen(
 @Composable
 fun ClientDashboardScreen(
     currentLang: String,
-    onNavigateToTab: (String) -> Unit
+    onNavigateToTab: (String) -> Unit,
+    onNavigateToRestaurant: (Restaurant) -> Unit,
+    isExpanded: Boolean = false
 ) {
     val profile by KamerRepository.userProfile.collectAsState()
     val restaurants by KamerRepository.restaurants.collectAsState()
@@ -276,18 +328,52 @@ fun ClientDashboardScreen(
     var isDeliverySelected by remember { mutableStateOf(true) }
     var selectedCategoryFilter by remember { mutableStateOf("Tout") }
     var showAddressSelector by remember { mutableStateOf(false) }
+    var showFilterModal by remember { mutableStateOf(false) }
     var activeAddress by remember { mutableStateOf(profile.addresses.firstOrNull()?.address ?: "Nlongkak, Yaoundé") }
 
     val scrollState = rememberScrollState()
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .background(UberWhite)
-    ) {
-        // --- 1. Top Uber Header (Location picker and Toggle) ---
-        Spacer(modifier = Modifier.height(12.dp))
+    Row(modifier = Modifier.fillMaxSize().background(UberWhite)) {
+        if (isExpanded) {
+            // Sidebar Categories on Tablet
+            NavigationRail(
+                containerColor = UberWhite,
+                header = {
+                    IconButton(onClick = { showFilterModal = true }) {
+                        Icon(Icons.Default.Tune, contentDescription = "Filters")
+                    }
+                }
+            ) {
+                val categories = listOf(
+                    "Tout" to Icons.Default.AllInclusive,
+                    "Fast Food" to Icons.Default.Fastfood,
+                    "Cuisine Locale" to Icons.Default.Restaurant,
+                    "Sain" to Icons.Default.Eco,
+                    "Promos" to Icons.Default.LocalOffer
+                )
+                categories.forEach { (name, icon) ->
+                    NavigationRailItem(
+                        selected = selectedCategoryFilter == name,
+                        onClick = { selectedCategoryFilter = name },
+                        icon = { Icon(icon, contentDescription = name) },
+                        label = { Text(name, fontSize = 10.sp) },
+                        colors = NavigationRailItemDefaults.colors(
+                            selectedIconColor = UberWhite,
+                            selectedTextColor = UberBlack,
+                            indicatorColor = UberBlack
+                        )
+                    )
+                }
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(scrollState)
+        ) {
+            // --- 1. Top Uber Header (Location picker and Toggle) ---
+            Spacer(modifier = Modifier.height(12.dp))
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -386,6 +472,63 @@ fun ClientDashboardScreen(
                     fontSize = 14.sp
                 )
             }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // --- Categories Carousel ---
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.padding(vertical = 8.dp)
+        ) {
+            val categories = listOf(
+                "Fast Food" to Icons.Default.Fastfood,
+                "Cuisine Locale" to Icons.Default.Restaurant,
+                "Sain" to Icons.Default.Eco,
+                "Promos" to Icons.Default.LocalOffer
+            )
+            items(categories) { (name, icon) ->
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.clickable { selectedCategoryFilter = name }
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(60.dp)
+                            .clip(CircleShape)
+                            .background(if (selectedCategoryFilter == name) UberGreen else UberGrayLight),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(icon, contentDescription = name, tint = if (selectedCategoryFilter == name) UberWhite else UberBlack)
+                    }
+                    Text(text = name, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // --- Advanced Filters ---
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 16.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(UberGrayLight)
+                .clickable { showFilterModal = true }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Tune, contentDescription = "Filters", modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Filtres", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        }
+
+        if (showFilterModal) {
+            FilterModal(
+                onDismiss = { showFilterModal = false },
+                onApply = { filters -> /* TODO: Apply filters */ }
+            )
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -643,134 +786,15 @@ fun ClientDashboardScreen(
                 )
             }
         } else {
-            filteredRestaurants.forEach { rest ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
-                        .clickable { onNavigateToTab("search") }
-                ) {
-                    // Wide 16:9 Image Container
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(160.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(UberGrayLight)
-                    ) {
-                        // cover banner
-                        AsyncImage(
-                            model = rest.banner,
-                            contentDescription = rest.name,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-
-                        // Sponsored tag overlay
-                        if (rest.isSponsored) {
-                            Box(
-                                modifier = Modifier
-                                    .padding(10.dp)
-                                    .background(UberWhite, RoundedCornerShape(4.dp))
-                                    .padding(horizontal = 6.dp, vertical = 3.dp)
-                                    .align(Alignment.TopStart)
-                            ) {
-                                Text(
-                                    text = if (currentLang == "Français") "Sponsorisé" else "Sponsored",
-                                    color = UberBlack,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 9.sp
-                                )
-                            }
-                        }
-
-                        // Heart overlay icon in top right
-                        val isFav = favoriteIds.contains(rest.id)
-                        Box(
-                            modifier = Modifier
-                                .padding(10.dp)
-                                .size(36.dp)
-                                .background(UberWhite, CircleShape)
-                                .clickable { KamerRepository.toggleFavoriteRestaurant(rest.id) }
-                                .align(Alignment.TopEnd),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                contentDescription = "Favorite",
-                                tint = if (isFav) UberRed else UberBlack,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Details row below cover photo
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(rest.logo, fontSize = 18.sp)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = rest.name,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = UberBlack
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "${rest.description}",
-                                fontSize = 12.sp,
-                                color = UberGrayDark,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "1000 XAF " + (if (currentLang == "Français") "Frais de livraison" else "Delivery Fee"),
-                                    fontSize = 11.sp,
-                                    color = UberGrayDark,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("•", fontSize = 11.sp, color = UberGrayDark)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "25-35 min",
-                                    fontSize = 11.sp,
-                                    color = UberGrayDark,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-
-                        // Rating pill on the right
-                        Box(
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(UberGrayLight)
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = rest.rating.toString(),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp,
-                                    color = UberBlack
-                                )
-                                Spacer(modifier = Modifier.width(2.dp))
-                                Icon(Icons.Default.Star, contentDescription = null, tint = UberYellow, modifier = Modifier.size(13.dp))
-                            }
-                        }
-                    }
+            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                filteredRestaurants.forEach { rest ->
+                    RestaurantCard(
+                        restaurant = rest,
+                        onClick = { onNavigateToRestaurant(rest) },
+                        isFavorite = favoriteIds.contains(rest.id),
+                        onToggleFavorite = { KamerRepository.toggleFavoriteRestaurant(rest.id) },
+                        currentLang = currentLang
+                    )
                 }
             }
         }
@@ -826,11 +850,13 @@ fun ClientDashboardScreen(
         )
     }
 }
+}
 
 @Composable
 fun ClientSearchScreen(
     currentLang: String,
-    onNavigateToTab: (String) -> Unit
+    onNavigateToTab: (String) -> Unit,
+    onNavigateToRestaurant: (Restaurant) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
     val restaurants by KamerRepository.restaurants.collectAsState()
@@ -894,6 +920,29 @@ fun ClientSearchScreen(
             }
         }
 
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Advanced Filters
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            items(listOf("Livraison Gratuite", "Note 4.0+", "Promotions", "< 30 min")) { filter ->
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(UberGrayLight)
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = filter,
+                        color = UberBlack,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(18.dp))
 
         // Results Section
@@ -937,59 +986,17 @@ fun ClientSearchScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             pairList.forEach { (rest, item) ->
-                                Card(
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = CardDefaults.cardColors(containerColor = UberGrayLight),
-                                    border = BorderStroke(1.dp, UberGrayMedium)
-                                ) {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(10.dp)
-                                    ) {
-                                        Text(
-                                            text = item.name,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp,
-                                            color = UberBlack,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = "De: ${rest.name}",
-                                            fontSize = 10.sp,
-                                            color = UberGrayDark,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = "${item.price.toInt()} XAF",
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontSize = 13.sp,
-                                            color = UberGreen
-                                        )
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Button(
-                                            onClick = {
-                                                KamerRepository.addToCart(CartItem(menuItem = item, quantity = 1))
-                                            },
-                                            colors = ButtonDefaults.buttonColors(containerColor = UberBlack),
-                                            shape = RoundedCornerShape(8.dp),
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(30.dp)
-                                                .testTag("add_item_${item.id}")
-                                        ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(Icons.Default.Add, contentDescription = null, tint = UberWhite, modifier = Modifier.size(12.dp))
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text(if (currentLang == "Français") "Ajouter" else "Add", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                            }
-                                        }
-                                    }
+                                Box(modifier = Modifier.weight(1f)) {
+                                    FoodItemCard(
+                                        name = item.name,
+                                        description = item.description,
+                                        price = item.price,
+                                        imageUrl = item.imageUrl,
+                                        subTitle = if (currentLang == "Français") "De: ${rest.name}" else "From: ${rest.name}",
+                                        onAddToCart = { KamerRepository.addToCart(CartItem(menuItem = item, quantity = 1)) },
+                                        onClick = { onNavigateToRestaurant(rest) },
+                                        currentLang = currentLang
+                                    )
                                 }
                             }
                             if (pairList.size < 2) {
@@ -1036,59 +1043,17 @@ fun ClientSearchScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             pairList.forEach { (seller, prod) ->
-                                Card(
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = CardDefaults.cardColors(containerColor = UberGrayLight),
-                                    border = BorderStroke(1.dp, UberGrayMedium)
-                                ) {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(10.dp)
-                                    ) {
-                                        Text(
-                                            text = prod.name,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp,
-                                            color = UberBlack,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = "De: ${seller.name}",
-                                            fontSize = 10.sp,
-                                            color = UberGrayDark,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = "${prod.price.toInt()} XAF",
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontSize = 13.sp,
-                                            color = UberGreen
-                                        )
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Button(
-                                            onClick = {
-                                                KamerRepository.addToCart(CartItem(product = prod, quantity = 1))
-                                            },
-                                            colors = ButtonDefaults.buttonColors(containerColor = UberBlack),
-                                            shape = RoundedCornerShape(8.dp),
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(30.dp)
-                                                .testTag("add_product_${prod.id}")
-                                        ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(Icons.Default.Add, contentDescription = null, tint = UberWhite, modifier = Modifier.size(12.dp))
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text(if (currentLang == "Français") "Ajouter" else "Add", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                            }
-                                        }
-                                    }
+                                Box(modifier = Modifier.weight(1f)) {
+                                    FoodItemCard(
+                                        name = prod.name,
+                                        description = prod.description,
+                                        price = prod.price,
+                                        imageUrl = prod.imageUrl,
+                                        subTitle = if (currentLang == "Français") "De: ${seller.name}" else "From: ${seller.name}",
+                                        onAddToCart = { KamerRepository.addToCart(CartItem(product = prod, quantity = 1)) },
+                                        onClick = { /* Navigate to seller details if implemented */ },
+                                        currentLang = currentLang
+                                    )
                                 }
                             }
                             if (pairList.size < 2) {
@@ -1123,29 +1088,11 @@ fun ClientCartScreen(
     val scrollState = rememberScrollState()
 
     if (cart.isEmpty()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text("🛒", fontSize = 72.sp)
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = if (currentLang == "Français") "Votre panier est vide" else "Your basket is empty",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = UberBlack
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = if (currentLang == "Français") "Parcourez des repas ou articles d'épicerie pour passer commande." else "Add items from restaurants and shops to get started.",
-                fontSize = 14.sp,
-                color = UberGrayDark,
-                textAlign = TextAlign.Center
-            )
-        }
+        EmptyState(
+            title = if (currentLang == "Français") "Votre panier est vide" else "Your basket is empty",
+            message = if (currentLang == "Français") "Parcourez des repas ou articles d'épicerie pour passer commande." else "Add items from restaurants and shops to get started.",
+            icon = Icons.Default.ShoppingCart
+        )
     } else {
         Column(
             modifier = Modifier
@@ -1412,15 +1359,26 @@ fun ClientCartScreen(
 
 @Composable
 fun ClientOrdersScreen(
-    currentLang: String
+    currentLang: String,
+    onNavigate: (String) -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
     val orders by KamerRepository.orders.collectAsState()
+    var showRatingForOrder by remember { mutableStateOf<String?>(null) }
     var selectedOrderForTracking by remember { mutableStateOf<Order?>(null) }
     var chatMessageInput by remember { mutableStateOf("") }
 
     val scrollState = rememberScrollState()
-
-    if (selectedOrderForTracking != null) {
+    
+    if (showRatingForOrder != null) {
+        RatingScreen(
+            orderId = showRatingForOrder!!,
+            onRate = { rating, comment -> 
+                showRatingForOrder = null
+                // TODO: Store rating
+            }
+        )
+    } else if (selectedOrderForTracking != null) {
         val trackingOrder = orders.find { it.id == selectedOrderForTracking!!.id } ?: selectedOrderForTracking!!
 
         Column(
@@ -1548,6 +1506,60 @@ fun ClientOrdersScreen(
                             }
                         }
                     } else {
+                        // Invoice details
+                        Text(
+                            text = if (currentLang == "Français") "Détails de la facture" else "Invoice Details",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = UberBlack
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = UberWhite),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                trackingOrder.items.forEach { item ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("${item.quantity}x ${item.name}", fontSize = 14.sp)
+                                        Text("${item.total.toInt()} XAF", fontSize = 14.sp)
+                                    }
+                                }
+                                Divider(modifier = Modifier.padding(vertical = 8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(if (currentLang == "Français") "Frais de livraison" else "Delivery Fee", fontSize = 14.sp, color = UberGrayDark)
+                                    Text("${trackingOrder.deliveryFee.toInt()} XAF", fontSize = 14.sp)
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(if (currentLang == "Français") "Total" else "Total", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Text("${trackingOrder.totalAmount.toInt()} XAF", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = UberGreen)
+                                }
+                            }
+                        }
+
+                        if (trackingOrder.status == OrderStatus.DELIVERED) {
+                            Spacer(modifier = Modifier.height(24.dp))
+                            Button(
+                                onClick = { showRatingForOrder = trackingOrder.id },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = UberBlack)
+                            ) {
+                                Text(if (currentLang == "Français") "Noter cette commande" else "Rate this order")
+                            }
+                        }
+
                         Box(
                             modifier = Modifier
                                 .align(Alignment.Center)
@@ -1559,8 +1571,9 @@ fun ClientOrdersScreen(
                                 text = when (trackingOrder.status) {
                                     OrderStatus.PENDING -> if (currentLang == "Français") "Attente de validation..." else "Awaiting store..."
                                     OrderStatus.PREPARING -> if (currentLang == "Français") "Préparation en cuisine..." else "Preparing your food..."
+                                    OrderStatus.OUT_FOR_DELIVERY -> if (currentLang == "Français") "Livreur en route..." else "On the way..."
                                     OrderStatus.DELIVERED -> if (currentLang == "Français") "Commande livrée !" else "Arrived!"
-                                    else -> "Chargement..."
+                                    OrderStatus.CANCELLED -> if (currentLang == "Français") "Commande annulée" else "Order cancelled"
                                 },
                                 color = UberBlack,
                                 fontSize = 11.sp,
@@ -1710,35 +1723,54 @@ fun ClientOrdersScreen(
                     // Quick-reply chat text field
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedTextField(
                             value = chatMessageInput,
                             onValueChange = { chatMessageInput = it },
-                            placeholder = { Text(if (currentLang == "Français") "Écrire au coursier..." else "Write to courier...") },
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("chat_input_text"),
+                            placeholder = { Text(if (currentLang == "Français") "Écrire..." else "Write...") },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(24.dp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = UberBlack,
-                                unfocusedBorderColor = UberGrayMedium,
-                                focusedLabelColor = UberBlack
-                            ),
-                            shape = RoundedCornerShape(20.dp)
+                                focusedBorderColor = UberGreen,
+                                cursorColor = UberBlack
+                            )
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
                         IconButton(
                             onClick = {
-                                if (chatMessageInput.isNotEmpty()) {
-                                    KamerRepository.addChatMessage(trackingOrder.id, chatMessageInput, "Vous")
+                                if (chatMessageInput.isNotBlank()) {
+                                    KamerRepository.addChatMessage(trackingOrder.id, chatMessageInput, "Client")
                                     chatMessageInput = ""
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 }
                             },
                             modifier = Modifier
-                                .testTag("chat_send_button")
                                 .background(UberBlack, CircleShape)
+                                .size(40.dp)
                         ) {
-                            Icon(Icons.Default.Send, contentDescription = "Send", tint = UberWhite)
+                            Icon(Icons.Default.Send, contentDescription = "Send", tint = UberWhite, modifier = Modifier.size(20.dp))
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    // Quick Replies
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val replies = if (currentLang == "Français") {
+                            listOf("Où êtes-vous ?", "Merci !", "C'est devant la porte", "Ok")
+                        } else {
+                            listOf("Where are you?", "Thank you!", "Leave at door", "Ok")
+                        }
+                        items(replies) { reply ->
+                            SuggestionChip(
+                                onClick = {
+                                    KamerRepository.addChatMessage(trackingOrder.id, reply, "Client")
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                },
+                                label = { Text(reply, fontSize = 12.sp) },
+                                shape = RoundedCornerShape(20.dp)
+                            )
                         }
                     }
                 }
@@ -1869,6 +1901,17 @@ fun ClientOrdersScreen(
                                     fontWeight = FontWeight.Bold,
                                     color = UberGreen
                                 )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(onClick = { KamerRepository.reorder(order.id); onNavigate("cart") }) {
+                                        Text(if (currentLang == "Français") "Recommander" else "Reorder")
+                                    }
+                                    if (order.status == OrderStatus.DELIVERED) {
+                                        Button(onClick = { showRatingForOrder = order.id }) {
+                                            Text(if (currentLang == "Français") "Noter" else "Rate")
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -1881,10 +1924,21 @@ fun ClientOrdersScreen(
 @Composable
 fun ClientProfileScreen(
     currentLang: String,
+    onNavigateToTab: (String) -> Unit,
     onLogout: () -> Unit
 ) {
     val profile by KamerRepository.userProfile.collectAsState()
     val scrollState = rememberScrollState()
+    var showLogoutDialog by remember { mutableStateOf(false) }
+
+    if (showLogoutDialog) {
+        AlertModal(
+            onDismiss = { showLogoutDialog = false },
+            onConfirm = { showLogoutDialog = false; onLogout() },
+            title = if (currentLang == "Français") "Se déconnecter ?" else "Sign Out?",
+            message = if (currentLang == "Français") "Êtes-vous sûr de vouloir vous déconnecter ?" else "Are you sure you want to sign out?"
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -1954,13 +2008,45 @@ fun ClientProfileScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Address list
-        Text(
-            text = if (currentLang == "Français") "Adresses enregistrées" else "Saved Addresses",
-            fontWeight = FontWeight.Bold,
-            fontSize = 16.sp,
-            color = UberBlack
+        // Navigation to new features
+        ListItem(
+            headlineContent = { Text("Récompenses") },
+            leadingContent = { Icon(Icons.Default.CardGiftcard, contentDescription = null) },
+            modifier = Modifier.clickable { onNavigateToTab("rewards") }
         )
+        ListItem(
+            headlineContent = { Text("Mes Réservations") },
+            leadingContent = { Icon(Icons.Default.DateRange, contentDescription = null) },
+            modifier = Modifier.clickable { onNavigateToTab("reservation") }
+        )
+        ListItem(
+            headlineContent = { Text("Appareils Connectés") },
+            leadingContent = { Icon(Icons.Default.Devices, contentDescription = null) }
+        )
+        ListItem(
+            headlineContent = { Text(if (currentLang == "Français") "Aide / FAQ" else "Help / FAQ") },
+            leadingContent = { Icon(Icons.Default.HelpOutline, contentDescription = null) },
+            modifier = Modifier.clickable { onNavigateToTab("faq") }
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Address list
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (currentLang == "Français") "Adresses enregistrées" else "Saved Addresses",
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                color = UberBlack
+            )
+            TextButton(onClick = { /* TODO: Add Address */ }) {
+                Text(if (currentLang == "Français") "Ajouter" else "Add")
+            }
+        }
         Spacer(modifier = Modifier.height(10.dp))
 
         profile.addresses.forEach { addr ->
@@ -1978,16 +2064,44 @@ fun ClientProfileScreen(
                 ) {
                     Icon(Icons.Filled.LocationOn, contentDescription = null, tint = UberBlack)
                     Spacer(modifier = Modifier.width(12.dp))
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(addr.title, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = UberBlack)
                         Text(addr.address, fontSize = 12.sp, color = UberGrayDark)
-                        if (addr.details.isNotEmpty()) {
-                            Text(addr.details, fontSize = 11.sp, color = UberGrayDark)
-                        }
                     }
+                    IconButton(onClick = { /* TODO: Edit */ }) { Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(16.dp)) }
+                    IconButton(onClick = { /* TODO: Delete */ }) { Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(16.dp)) }
                 }
             }
         }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        // Payment methods
+        Text(
+            text = if (currentLang == "Français") "Moyens de paiement" else "Payment Methods",
+            fontWeight = FontWeight.Bold,
+            fontSize = 16.sp,
+            color = UberBlack
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        ListItem(
+            headlineContent = { Text("Mobile Money") },
+            leadingContent = { Icon(Icons.Default.PhoneAndroid, contentDescription = null) },
+            trailingContent = { TextButton(onClick = { /* TODO */ }) { Text("Modifier") } }
+        )
+        TextButton(onClick = { /* TODO */ }) { Text("+ Ajouter un moyen de paiement") }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Security & Help
+        Text(
+            text = if (currentLang == "Français") "Sécurité et Aide" else "Security & Help",
+            fontWeight = FontWeight.Bold,
+            fontSize = 16.sp,
+            color = UberBlack
+        )
+        ListItem(headlineContent = { Text(if (currentLang == "Français") "Changer le mot de passe" else "Change Password") }, leadingContent = { Icon(Icons.Default.Lock, contentDescription = null) })
+        ListItem(headlineContent = { Text(if (currentLang == "Français") "Centre d'aide" else "Help Center") }, leadingContent = { Icon(Icons.Default.Help, contentDescription = null) })
 
         Spacer(modifier = Modifier.height(24.dp))
 
@@ -2038,7 +2152,7 @@ fun ClientProfileScreen(
 
         // Sign out button
         Button(
-            onClick = onLogout,
+            onClick = { showLogoutDialog = true },
             colors = ButtonDefaults.buttonColors(containerColor = UberRed),
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier
@@ -2114,34 +2228,13 @@ fun ClientFavoritesScreen(
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(favoriteRestaurants) { rest ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onNavigateToTab("search") },
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = UberGrayLight),
-                        border = BorderStroke(1.dp, UberGrayMedium)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .padding(12.dp)
-                                .fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(rest.logo, fontSize = 22.sp)
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(rest.name, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = UberBlack)
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(rest.description, fontSize = 12.sp, color = UberGrayDark, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text("🕒 ${rest.hours}  •  ${rest.city}", fontSize = 11.sp, color = UberGreen, fontWeight = FontWeight.Bold)
-                            }
-                            IconButton(onClick = { KamerRepository.toggleFavoriteRestaurant(rest.id) }) {
-                                Icon(Icons.Default.Favorite, contentDescription = "Remove", tint = UberRed)
-                            }
-                        }
-                    }
+                    RestaurantCard(
+                        restaurant = rest,
+                        onClick = { onNavigateToTab("search") },
+                        isFavorite = true,
+                        onToggleFavorite = { KamerRepository.toggleFavoriteRestaurant(rest.id) },
+                        currentLang = currentLang
+                    )
                 }
             }
         }
